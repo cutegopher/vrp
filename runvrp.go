@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"vrp/vrp"
 )
@@ -12,7 +13,8 @@ func main() {
 	if len(os.Args) != 2 {
 		log.Fatal("Unexpected number of arguments\nCorrect usage: programe-name input-file-name")
 	}
-	loads, err := vrp.ParseFile(os.Args[1])
+	loads, distanceFromStart, err := vrp.ParseFile(os.Args[1])
+
 	if err != nil {
 		log.Fatalf("Error parsing the file %s %v", os.Args[1], err)
 	}
@@ -22,53 +24,51 @@ func main() {
 	allRoutes := [][]int{}
 
 	for routesPlanned < len(loads) {
-		near, err := vrp.NearestToStart(loads, done)
-		if err != nil {
-			fmt.Println("Could not find the node nearest to the Starting point")
-			continue
-		}
-
 		// first node
+		newID := vrp.NearestFromStart(distanceFromStart, done)
 		routesPlanned++
-		done = append(done, near.ID)
-		route := []int{near.ID}
+		done = append(done, newID)
+		route := []int{newID}
 
-		travelTime := near.DistanceFromStart           // #1
-		travelTime = travelTime + near.DistanceToStart // #6
-		middle1 := near.Distance                       // #2 (conditional, when second node cannot be added.
-		var middle float64 = middle1
+		var currentLocation vrp.Coordinates = vrp.Start
+		var ReturnPath float64 = vrp.CalcDistance(loads[newID-1].DropOff, vrp.Start)
+		var disTravelled float64 = vrp.CalcDistance(currentLocation, loads[newID-1].PickUp)
+		disTravelled = disTravelled + vrp.CalcDistance(loads[newID-1].PickUp, loads[newID-1].DropOff)
+		currentLocation = loads[newID-1].DropOff
 
-		// second node
 		for {
-			nearestNeighID, neighDistance := vrp.GetNearestNeighbor(xdistance, near.ID-1, done)             // second node
-			newtravelTime := neighDistance                                                                  // #3
-			newtravelTime = newtravelTime + vrp.CalcDistance(loads[nearestNeighID-1].DropOff, near.DropOff) // 5
-			middle2 := loads[nearestNeighID-1].Distance                                                     // #4.
+			var newnearestNeighID int
+			var newDistance, newReturnPath float64
+			iterate := true
 
-			if (travelTime + newtravelTime + middle2) <= 720 {
-				middle = middle2
-				travelTime = travelTime + newtravelTime
-
-				done = append(done, nearestNeighID)
-				route = append(route, nearestNeighID)
-
-				routesPlanned++
-				_ = travelTime + newtravelTime // time taken by the load to be delivered
-				continue
+            // second node
+			newnearestNeighID = vrp.NearestNeighbor(loads, xdistance, newID, done)
+			if newnearestNeighID == -1 {
+				iterate = false
+			} else {
+				newDistance = vrp.CalcDistance(currentLocation, loads[newnearestNeighID-1].PickUp)
+				newDistance = newDistance + vrp.CalcDistance(loads[newnearestNeighID-1].PickUp, loads[newnearestNeighID-1].DropOff)
+				newReturnPath = vrp.CalcDistance(loads[newnearestNeighID-1].DropOff, vrp.Start)
 			}
-			_ = travelTime + middle // time taken by the load to be delivered
-			travelTime = 0.0
-			allRoutes = append(allRoutes, route)
-			break
+			if (disTravelled+newDistance+newReturnPath) >= 720 || !iterate {
+				disTravelled = disTravelled + ReturnPath
+				allRoutes = append(allRoutes, route)
+				break
+			}
+			currentLocation = loads[newnearestNeighID-1].DropOff
+			disTravelled = disTravelled + newDistance
+			ReturnPath = newReturnPath
+			routesPlanned++
+			done = append(done, newnearestNeighID)
+			route = append(route, newnearestNeighID)
 		}
 	}
 
-	for i := range allRoutes {
-		fmt.Print("[")
-		subStr := ""
-		for _, j := range allRoutes[i] {
-			subStr = subStr + fmt.Sprintf("%d,", j)
+	for i := 0; i < len(allRoutes); i++ {
+		strs := []string{}
+		for j := 0; j < len(allRoutes[i]); j++ {
+			strs = append(strs, strconv.Itoa(allRoutes[i][j]))
 		}
-		fmt.Printf("%s]\n", strings.Trim(subStr, ","))
+		fmt.Printf("[%s]\n", strings.Join(strs, ","))
 	}
 }
